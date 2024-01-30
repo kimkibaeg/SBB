@@ -1,8 +1,12 @@
 package com.mysit.sbb.question;
 
+import java.security.Principal;
 import java.util.List;
 
 import org.springframework.data.domain.Page;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -12,11 +16,15 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.mysit.sbb.answer.AnswerForm;
+import com.mysit.sbb.user.SiteUser;
+import com.mysit.sbb.user.UserService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import oracle.jdbc.proxy.annotation.Post;
 
 
 @RequestMapping("/question")	// 하위 @GetMapping, @PostMapping 의 prefix 가 적용됨 
@@ -30,6 +38,8 @@ public class QuestionController {
 	//private final QuestionRepository questionRepository; 
 	
 	private final QuestionService questionService; 
+	private final UserService userService; 
+	
 	
 	//http://localhost:8585/question/list
 	@GetMapping("/list")
@@ -101,13 +111,19 @@ public class QuestionController {
 		return "question_form"; 
 	}
 	
-	// 질문등록 DB에 값을 받아서 저장 
+	// 질문등록 DB에 값을 받아서 저장
+	// 인증된 사용자만 접근 가능 				
+		//<=== Spring Security 설정 :SecurityConfig.java , @EnableMethodSecurity(prePostEnabled=true)
+	@PreAuthorize("isAuthenticated()")
 	@PostMapping("/create")
 	public String questionCreate(
 //			@RequestParam("subject") String subject, 
 //			@RequestParam("content") String content
-			@Valid QuestionForm questionForm, BindingResult bindingResult
+			@Valid QuestionForm questionForm, BindingResult bindingResult, 
+			Principal principal
 			) {
+		
+		System.out.println("###현재 로그온한 계정 : " + principal.getName());
 		
 		if ( bindingResult.hasFieldErrors()) {
 			return "question_form"; 
@@ -117,10 +133,89 @@ public class QuestionController {
 		System.out.println("제목 : " + subject);
 		System.out.println("내용 : " + content);
 		*/ 
-		questionService.create(questionForm.getSubject(), questionForm.getContent()); 
+		
+		SiteUser siteUser = userService.getUser(principal.getName()); 
+		
+		
+		questionService.create(questionForm.getSubject(), questionForm.getContent(),siteUser); 
 				
 		return "redirect:/question/list" ; 
 	}
+	
+	// 질문 정보를 가져와서 뷰 페이지로 값을 넣어줌 
+	// http://localhost:8585/question/modify/1
+	@GetMapping("/modify/{id}")
+	public String questionModify(
+			QuestionForm questionForm, 
+			@PathVariable("id") Integer id , 
+			Principal principal			
+			) {
+			// pincipal.getName();  : 현재 로그인한 사용자 정보를 출력 
+		// 넘어오는 id 변수를 가져와서 수정할 question 객체를 끄집어 옴 
+		// save() - insert 
+		// save() - update	<== 기존의 DB의 레코드(Question)를 끄집어 내서 수정 
+		
+		Question q = questionService.getQuestion(id); 
+		
+		/*
+		System.out.println("컨트롤러에서 제목 출력 : " + q.getSubject());
+		System.out.println("컨트롤러에서 내용 출력 : " + q.getContent());
+		*/ 
+		
+		// q 에 저장된 subject , content 필드의 값을 questionForm에 넣어서 클라이언트로 전송 
+		questionForm.setSubject(q.getSubject()); 
+		questionForm.setContent(q.getContent()); 
+			
+		return "question_form" ; 
+	}
+	
+	// 질문 수정된 내용을 받아서 DB에 저장 , save() 기존의 question 객체를 끄집어내서 수정후 저장 
+	// http://localhost:8585/question/modify/1
+	@PostMapping("/modify/{id}")
+	public String questionModify (
+			@Valid QuestionForm questionForm, 
+			BindingResult bindingResult, 
+			@PathVariable("id") Integer id , 
+			Principal principal			
+			) {
+		
+		// questionForm 에 주입된 값을 확인 
+		if (bindingResult.hasErrors()) {
+			return "question_form" ; 
+		}
+		
+		// 수정된 값을 DB에 저장하는 Service 메소드 호출 
+			//수정할 Question 객체를 끄집어냄 
+		Question q = questionService.getQuestion(id); 
+		questionService.modify(q, questionForm.getSubject(), questionForm.getContent()); 
+		
+		// 수정 이후에 이동할 페이지 
+		return String.format("redirect:/question/detail/%s", id) ; 
+	}
+	
+	// 삭제 요청에 대한 처리 
+	@GetMapping("/delete/{id}")
+	public String questionDelete(
+			@PathVariable("id") Integer id , 
+			Principal principal 			
+			) {
+		// id 값을 가지고 Question 객체 
+		Question q = questionService.getQuestion(id); 
+		
+		// URL를 사용해서 삭제 할 수 없도록 한다. 
+		//현재 로그온한 계정과 DB의 저장된 username 과 같지 않을때 예외 발생 
+		if (! principal.getName().equals(q.getAuthor().getUsername())) {
+			// 예외를 강제로 발생 김 
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "삭제할 권한이 없습니다. "); 
+		}
+				
+		// 삭제됨 
+		questionService.questionDelete(q); 
+				
+		return "redirect:/" ; 
+	}
+	
+	
 	
 
 }
