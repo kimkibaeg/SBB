@@ -24,9 +24,10 @@ import com.mysit.sbb.user.UserService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import oracle.jdbc.proxy.annotation.Post;
 
-
+@Slf4j
 @RequestMapping("/question")	// 하위 @GetMapping, @PostMapping 의 prefix 가 적용됨 
 @RequiredArgsConstructor
 @Controller
@@ -41,13 +42,21 @@ public class QuestionController {
 	private final UserService userService; 
 	
 	
-	//http://localhost:8585/question/list
+	//http://localhost:8585/question/list?page=0&kw='스프링'
 	@GetMapping("/list")
 	//@ResponseBody
 	public String list(Model model, 
-			@RequestParam(value = "page", defaultValue="0") int page  
+			@RequestParam(value = "page", defaultValue="0") Integer page, 
+			@RequestParam(value="kw", defaultValue="") String kw
 			
 			) {
+		// 로그에서 출력 : 서버에 배포된 상태에서 변수 값을 출력 
+		log.info("page:{}, kw:{}" , page, kw) ; 
+		
+		// 콘솔에서 출력 : 개발시 변수값을 출력 
+		System.out.println("page : " + page);
+		System.out.println("kw : " + kw);
+		
 		
 		//Model : 서버의 데이터를 client view 페이지로 전송 
 		// 메소드 인풋 값으로 선언되면 객체가 자동으로 생성됨 
@@ -56,7 +65,7 @@ public class QuestionController {
 		//List<Question> questionList = questionService.getList();  
 		
 		//페이징 처리된 객체를 받음 
-		Page<Question> paging = questionService.getList(page); 
+		Page<Question> paging = questionService.getList(page , kw); 
 
 		// paging 에 등록 되어 있는 중요 메소드 출력
 		/*
@@ -74,6 +83,7 @@ public class QuestionController {
 		//model.addAttribute("questionList", questionList); 
 		
 		model.addAttribute("paging", paging); 
+		model.addAttribute("kw", kw); 
 		
 		
 		//templates/question_list.html  
